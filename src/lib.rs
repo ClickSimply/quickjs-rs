@@ -244,6 +244,11 @@ impl Context {
         Ok(value)
     }
 
+    /// step method
+    pub fn step(&self) {
+        self.wrapper.step();
+    }
+
     /// eval promise
     pub fn eval_promise_test(&self, code: &str) -> Result<JsValue, ExecutionError> {
         let value_raw = self.wrapper.eval(code)?;
