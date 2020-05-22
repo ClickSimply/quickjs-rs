@@ -40,10 +40,13 @@ pub mod console;
 mod droppable_value;
 mod value;
 
+use crate::bindings::OwnedValueRef;
+use core::future::Future;
 use std::{convert::TryFrom, error, fmt};
 
 pub use callback::{Arguments, Callback};
 pub use value::*;
+use bindings::OwnedObjectRef;
 
 /// Error on Javascript execution.
 #[derive(PartialEq, Debug)]
@@ -239,6 +242,37 @@ impl Context {
         let value_raw = self.wrapper.eval(code)?;
         let value = value_raw.to_value()?;
         Ok(value)
+    }
+
+    /// eval promise
+    pub fn eval_promise_test(&self, code: &str) -> Result<JsValue, ExecutionError> {
+        let value_raw = self.wrapper.eval(code)?;
+        let value = value_raw.to_value()?;
+        if value_raw.is_object() {
+            match OwnedObjectRef::new(value_raw) {
+                Ok(value) => {
+                    println!("Promise result {:?}", value.is_promise().unwrap_or(false));
+                },
+                Err(_e) => {
+                    println!("Promise test error");
+                }
+            }
+        } else {
+            println!("Promise not object");
+        }
+
+        Ok(value)
+    }
+
+    /// Eval with await
+    pub async fn eval_async<R>(&self, code: &str) -> Result<R, ExecutionError>    
+        where
+        R: TryFrom<JsValue>,
+        R::Error: Into<ValueError> {
+        let value_raw = self.wrapper.eval_async(code).await?;
+        let value = value_raw.to_value()?;
+        let ret = R::try_from(value).map_err(|e| e.into())?;
+        Ok(ret)
     }
 
     /// Evaluates Javascript code and returns the value of the final expression

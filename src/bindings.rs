@@ -1,3 +1,7 @@
+use core::task::Waker;
+use core::cell::RefCell;
+use std::rc::Rc;
+use core::future::Future;
 use std::{
     collections::HashMap,
     ffi::CString,
@@ -583,7 +587,7 @@ where
 /// It prevents leaks by ensuring that the inner value is deallocated on drop.
 pub struct OwnedValueRef<'a> {
     context: &'a ContextWrapper,
-    value: q::JSValue,
+    value: q::JSValue
 }
 
 impl<'a> Drop for OwnedValueRef<'a> {
@@ -711,7 +715,7 @@ impl<'a> OwnedObjectRef<'a> {
 
     /// Determine if the object is a promise by checking the presence of
     /// a 'then' and a 'catch' property.
-    fn is_promise(&self) -> Result<bool, ValueError> {
+    pub fn is_promise(&self) -> Result<bool, ValueError> {
         if self.property_tag("then")? == TAG_OBJECT && self.property_tag("catch")? == TAG_OBJECT {
             Ok(true)
         } else {
@@ -791,6 +795,8 @@ pub struct ContextWrapper {
     /// the closure.
     // A Mutex is used over a RefCell because it needs to be unwind-safe.
     callbacks: Mutex<Vec<(Box<WrappedCallback>, Box<q::JSValue>)>>,
+    wakers: Rc<RefCell<HashMap<u64, Waker>>>,
+    wakerCt: Rc<RefCell<u64>>
 }
 
 impl Drop for ContextWrapper {
@@ -800,6 +806,53 @@ impl Drop for ContextWrapper {
             q::JS_FreeRuntime(self.runtime);
         }
     }
+}
+
+struct AsyncJavascript<'a> {
+    pub value: OwnedValueRef<'a>,
+    pub wakers: Rc<RefCell<HashMap<u64, Waker>>>,
+    pub index: u64,
+    pub setup: bool
+}
+
+impl<'a> Future for AsyncJavascript<'a> {
+    type Output = ();
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+
+        let setup = self.setup;
+        let idx = self.index;
+
+        if setup == false {
+            self.setup = true;
+            self.wakers.borrow_mut().insert(idx, cx.waker().clone());
+            std::task::Poll::Pending
+        } else {
+            let mut waker_list = self.wakers.borrow_mut(); 
+            /*
+            if self.value.is_object() {
+                match OwnedObjectRef::new(self.value) {
+                    Ok(obj) => {
+                        if obj.is_promise().unwrap_or(false) {
+                            return std::task::Poll::Pending;
+                        } else {
+                            waker_list.remove(&self.index);
+                            return std::task::Poll::Ready(());
+                        }
+                    },
+                    Err(_e) => {
+                        waker_list.remove(&self.index);
+                        return std::task::Poll::Ready(());
+                    }
+                }
+            } else {
+                waker_list.remove(&self.index);
+                return std::task::Poll::Ready(());
+            }*/
+            waker_list.remove(&self.index);
+            return std::task::Poll::Ready(());
+        }
+    }
+
 }
 
 unsafe extern "C" fn init(ctx: *mut q::JSContext, m: *mut q::JSModuleDef) -> i32 {
@@ -873,6 +926,8 @@ impl ContextWrapper {
             runtime,
             context,
             callbacks: Mutex::new(Vec::new()),
+            wakers: Rc::new(RefCell::new(HashMap::new())),
+            wakerCt: Rc::new(RefCell::new(0))
         };
 
         Ok(wrapper)
@@ -992,6 +1047,8 @@ impl ContextWrapper {
         }
     }
 
+
+
     /// If the given value is a promise, run the event loop until it is
     /// resolved, and return the final value.
     fn resolve_value<'a>(
@@ -1070,6 +1127,50 @@ impl ContextWrapper {
         } else {
             Ok(value)
         }
+    }
+
+    pub fn step(&self) {
+        unsafe {
+            let wrapper_mut = self as *const Self as *mut Self;
+            let ctx_mut = &mut (*wrapper_mut).context;
+            q::JS_ExecutePendingJob(self.runtime, ctx_mut);
+        }
+
+        for w in self.wakers.borrow().iter() {
+            w.1.clone().wake();
+        }
+    }
+
+    pub async fn eval_async<'a>(&'a self, code: &str) ->  Result<OwnedValueRef<'a>, ExecutionError> {
+        let filename = "script.js";
+        let filename_c = make_cstring(filename)?;
+        let code_c = make_cstring(code)?;
+
+        let value_raw = unsafe {
+            q::JS_Eval(
+                self.context,
+                code_c.as_ptr(),
+                code.len(),
+                filename_c.as_ptr(),
+                q::JS_EVAL_TYPE_GLOBAL as i32,
+            )
+        };
+
+        let mut idx;
+        {
+            idx = *self.wakerCt.borrow_mut();
+            idx += 1;
+        }
+
+        AsyncJavascript {
+            value: OwnedValueRef::new(self, value_raw),
+            wakers: Rc::clone(&self.wakers),
+            index: idx,
+            setup: false
+        }.await;
+
+        let value = OwnedValueRef::new(self, value_raw);
+        self.resolve_value(value)
     }
 
     /// Evaluate javascript code.
