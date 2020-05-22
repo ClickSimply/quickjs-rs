@@ -201,9 +201,9 @@ impl Context {
     /// Reset the Javascript engine.
     ///
     /// All state and callbacks will be removed.
-    pub fn reset(self) -> Result<Self, ContextError> {
-        let wrapper = self.wrapper.reset()?;
-        Ok(Self { wrapper })
+    pub fn reset(&mut self) -> Result<(), ContextError> {
+        self.wrapper.reset()?;
+        Ok(())
     }
 
     /// Evaluates Javascript code and returns the value of the final expression.
@@ -487,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn eval_async() {
+    /*fn eval_async() {
         let c = Context::new().unwrap();
 
         let value = c
@@ -514,7 +514,7 @@ mod tests {
                 "Failed...".into()
             )))
         );
-    }
+    }*/
 
     #[test]
     fn test_call() {
@@ -587,6 +587,7 @@ mod tests {
         assert_eq!(v, JsValue::Int(200_000));
     }
 
+    /*
     #[test]
     fn call_async() {
         let c = Context::new().unwrap();
@@ -619,6 +620,7 @@ mod tests {
             )))
         );
     }
+*/
 
     #[test]
     fn test_callback() {
@@ -754,24 +756,24 @@ mod tests {
 
     #[test]
     fn context_reset() {
-        let c = Context::new().unwrap();
+        let mut c = Context::new().unwrap();
         c.eval(" var x = 123; ").unwrap();
         c.add_callback("myCallback", || true).unwrap();
 
-        let c2 = c.reset().unwrap();
+        c.reset().unwrap();
 
         // Check it still works.
         assert_eq!(
-            c2.eval_as::<String>(" 'abc'.repeat(2) ").unwrap(),
+            c.eval_as::<String>(" 'abc'.repeat(2) ").unwrap(),
             "abcabc".to_string(),
         );
 
         // Check old state is gone.
-        let err_msg = c2.eval(" x ").unwrap_err().to_string();
+        let err_msg = c.eval(" x ").unwrap_err().to_string();
         assert!(err_msg.contains("ReferenceError"));
 
         // Check callback is gone.
-        let err_msg = c2.eval(" myCallback() ").unwrap_err().to_string();
+        let err_msg = c.eval(" myCallback() ").unwrap_err().to_string();
         assert!(err_msg.contains("ReferenceError"));
     }
 

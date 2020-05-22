@@ -802,6 +802,37 @@ impl Drop for ContextWrapper {
     }
 }
 
+unsafe extern "C" fn init(ctx: *mut q::JSContext, m: *mut q::JSModuleDef) -> i32 {
+
+    let mut exotic = q::JSClassExoticMethods {
+        get_own_property: None,
+        get_own_property_names: None,
+        delete_property: None,
+        define_own_property: None,
+        has_property: None,
+        get_property: None,
+        set_property: None
+    };
+    let exotic_ptr = &mut exotic as *mut q::JSClassExoticMethods;
+
+    let mut classDef: q::JSClassDef = q::JSClassDef {
+        class_name: CString::new("Timer").unwrap().as_ptr(),
+        finalizer: None,
+        gc_mark: None,
+        call: None,
+        exotic: exotic_ptr,
+    };
+
+    let class_def_ptr = &mut classDef as *mut q::JSClassDef;
+
+    let class_id: q::JSClassID = 0;
+    let class_ptr = class_id as *mut u32;
+    q::JS_NewClassID(class_ptr);
+    q::JS_NewClass(q::JS_GetRuntime(ctx), class_id, class_def_ptr);
+
+    0i32
+}
+
 impl ContextWrapper {
     /// Initialize a wrapper by creating a JSRuntime and JSContext.
     pub fn new(memory_limit: Option<usize>) -> Result<Self, ContextError> {
@@ -824,7 +855,18 @@ impl ContextWrapper {
             }
             return Err(ContextError::ContextCreationFailed);
         }
+/*
+        unsafe {
+            let c_str = CString::new("test").unwrap();
+            let m = q::JS_NewCModule(context, c_str.as_ptr(), Some(init));
 
+            let c_func = q::JSCFunctionListEntry {
+
+            }
+
+            // q::JS_SetModuleExportList(context, m);
+        }
+*/
         // Initialize the promise resolver helper code.
         // This code is needed by Self::resolve_value
         let wrapper = Self {
@@ -891,7 +933,7 @@ impl ContextWrapper {
     }
 
     /// Reset the wrapper by creating a new context.
-    pub fn reset(self) -> Result<Self, ContextError> {
+    pub fn reset(&mut self) -> Result<(), ContextError> {
         unsafe {
             q::JS_FreeContext(self.context);
         };
@@ -903,7 +945,7 @@ impl ContextWrapper {
 
         let mut s = self;
         s.context = context;
-        Ok(s)
+        Ok(())
     }
 
     pub fn serialize_value(&self, value: JsValue) -> Result<OwnedValueRef<'_>, ExecutionError> {
@@ -963,7 +1005,8 @@ impl ContextWrapper {
             Err(err)
         } else if value.is_object() {
             let obj = OwnedObjectRef::new(value)?;
-            if obj.is_promise()? {
+            Ok(obj.into_value())
+            /*if obj.is_promise()? {
                 self.eval(
                     r#"
                     // Values:
@@ -1023,7 +1066,7 @@ impl ContextWrapper {
                 }
             } else {
                 Ok(obj.into_value())
-            }
+            }*/
         } else {
             Ok(value)
         }
