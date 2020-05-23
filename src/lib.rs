@@ -249,26 +249,6 @@ impl Context {
         self.wrapper.step();
     }
 
-    /// eval promise
-    pub fn eval_promise_test(&self, code: &str) -> Result<JsValue, ExecutionError> {
-        let value_raw = self.wrapper.eval(code)?;
-        let value = value_raw.to_value()?;
-        if value_raw.is_object() {
-            match OwnedObjectRef::new(value_raw) {
-                Ok(value) => {
-                    println!("Promise result {:?}", value.is_promise().unwrap_or(false));
-                },
-                Err(_e) => {
-                    println!("Promise test error");
-                }
-            }
-        } else {
-            println!("Promise not object");
-        }
-
-        Ok(value)
-    }
-
     /// Eval with await
     pub async fn eval_async<R>(&self, code: &str) -> Result<R, ExecutionError>    
         where

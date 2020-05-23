@@ -1,3 +1,5 @@
+use std::sync::RwLock;
+use std::sync::Arc;
 use core::task::Waker;
 use core::cell::RefCell;
 use std::rc::Rc;
@@ -795,7 +797,7 @@ pub struct ContextWrapper {
     /// the closure.
     // A Mutex is used over a RefCell because it needs to be unwind-safe.
     callbacks: Mutex<Vec<(Box<WrappedCallback>, Box<q::JSValue>)>>,
-    wakers: Rc<RefCell<HashMap<u64, Waker>>>,
+    wakers: Arc<Mutex<HashMap<u64, Waker>>>,
     wakerCt: Rc<RefCell<u64>>
 }
 
@@ -810,7 +812,7 @@ impl Drop for ContextWrapper {
 
 struct AsyncJavascript<'a> {
     pub value: OwnedValueRef<'a>,
-    pub wakers: Rc<RefCell<HashMap<u64, Waker>>>,
+    pub wakers: Arc<Mutex<HashMap<u64, Waker>>>,
     pub index: u64,
     pub setup: bool
 }
@@ -824,31 +826,10 @@ impl<'a> Future for AsyncJavascript<'a> {
 
         if setup == false {
             self.setup = true;
-            self.wakers.borrow_mut().insert(idx, cx.waker().clone());
+            let mut wakers = self.wakers.lock().unwrap();
+            wakers.insert(idx, cx.waker().clone());
             std::task::Poll::Pending
         } else {
-            let mut waker_list = self.wakers.borrow_mut(); 
-            /*
-            if self.value.is_object() {
-                match OwnedObjectRef::new(self.value) {
-                    Ok(obj) => {
-                        if obj.is_promise().unwrap_or(false) {
-                            return std::task::Poll::Pending;
-                        } else {
-                            waker_list.remove(&self.index);
-                            return std::task::Poll::Ready(());
-                        }
-                    },
-                    Err(_e) => {
-                        waker_list.remove(&self.index);
-                        return std::task::Poll::Ready(());
-                    }
-                }
-            } else {
-                waker_list.remove(&self.index);
-                return std::task::Poll::Ready(());
-            }*/
-            waker_list.remove(&self.index);
             return std::task::Poll::Ready(());
         }
     }
@@ -920,13 +901,14 @@ impl ContextWrapper {
             // q::JS_SetModuleExportList(context, m);
         }
 */
+
         // Initialize the promise resolver helper code.
         // This code is needed by Self::resolve_value
         let wrapper = Self {
             runtime,
             context,
             callbacks: Mutex::new(Vec::new()),
-            wakers: Rc::new(RefCell::new(HashMap::new())),
+            wakers: Arc::new(Mutex::new(HashMap::new())),
             wakerCt: Rc::new(RefCell::new(0))
         };
 
@@ -1136,15 +1118,55 @@ impl ContextWrapper {
             q::JS_ExecutePendingJob(self.runtime, ctx_mut);
         }
 
-        for w in self.wakers.borrow().iter() {
+        /*for w in self.wakers.borrow().iter() {
             w.1.clone().wake();
-        }
+        }*/
+    }
+
+    pub fn setup_async(&mut self) -> Result<(), ExecutionError> {
+
+        let wakers = Arc::clone(&self.wakers);
+
+        self.add_callback("rs_async_callback", move |index: i32| {
+            let mut waker = wakers.lock().unwrap();
+            match waker.get(&(index as u64)) {
+                Some(x) => {
+                    x.clone().wake();
+                    waker.remove(&(index as u64)).unwrap();
+                },
+                None => {
+
+                }
+            }
+            0i32
+        })?;
+
+        self.eval("
+            this.__async_values = [];
+            this.__async_callback = (idx, error) => {
+                return (result) => {
+                    this.__async_values[idx] = [error, result];
+                    rs_async_callback(idx);
+                }
+            }
+        ")?;
+
+        Ok(())
     }
 
     pub async fn eval_async<'a>(&'a self, code: &str) ->  Result<OwnedValueRef<'a>, ExecutionError> {
         let filename = "script.js";
         let filename_c = make_cstring(filename)?;
-        let code_c = make_cstring(code)?;
+
+        let mut idx;
+        {
+            idx = *self.wakerCt.borrow_mut();
+            idx += 1;
+        }
+
+        let code_c = make_cstring(format!("(function (complete, error) {{
+            {:?}
+        }})(this.__async_callback({}, false), this.__async_callback({}, true));", code, idx, idx))?;
 
         let value_raw = unsafe {
             q::JS_Eval(
@@ -1156,21 +1178,26 @@ impl ContextWrapper {
             )
         };
 
-        let mut idx;
-        {
-            idx = *self.wakerCt.borrow_mut();
-            idx += 1;
-        }
-
         AsyncJavascript {
             value: OwnedValueRef::new(self, value_raw),
-            wakers: Rc::clone(&self.wakers),
+            wakers: Arc::clone(&self.wakers),
             index: idx,
             setup: false
         }.await;
 
-        let value = OwnedValueRef::new(self, value_raw);
-        self.resolve_value(value)
+        let code_c = make_cstring(format!("this.__async_values[{}][1];", idx))?;
+
+        let value_raw_result = unsafe {
+            q::JS_Eval(
+                self.context,
+                code_c.as_ptr(),
+                code.len(),
+                filename_c.as_ptr(),
+                q::JS_EVAL_TYPE_GLOBAL as i32,
+            )
+        };
+
+        self.resolve_value(OwnedValueRef::new(self, value_raw_result))
     }
 
     /// Evaluate javascript code.
