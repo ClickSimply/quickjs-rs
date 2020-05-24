@@ -1123,6 +1123,7 @@ impl ContextWrapper {
         }*/
     }
 
+    /// Setup async calls
     pub fn setup_async(&mut self) -> Result<(), ExecutionError> {
 
         let wakers = Arc::clone(&self.wakers);
