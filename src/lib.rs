@@ -249,6 +249,11 @@ impl Context {
         self.wrapper.step();
     }
 
+    /// setup for async await
+    pub fn setup_async(&self) -> Result<(), ExecutionError>    {
+        self.wrapper.setup_async()
+    }
+
     /// Eval with await
     pub async fn eval_async<R>(&self, code: &str) -> Result<R, ExecutionError>    
         where
