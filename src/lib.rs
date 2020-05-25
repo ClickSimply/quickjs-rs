@@ -204,17 +204,14 @@ X::Error: Into<ValueError> {
 
         if this.setup {
             this.context.with(|ctx| {
-                {
-                    let mut wakers = ctx.wrapper.wakers.lock().unwrap();
-                    wakers.remove(&this.index);
-                }
+                ctx.step();
                 let js = format!("this.__async_values[{}][1];", this.index);
                 std::task::Poll::Ready(ctx.eval_as::<X>(js.as_str()))
             })
         } else {
             this.setup = true;
             this.context.with(|ctx| {
-                let mut idx;
+                let idx;
                 {
                     let mut ct = *ctx.wrapper.wakerCt.lock().unwrap();
                     idx = ct;
@@ -225,9 +222,16 @@ X::Error: Into<ValueError> {
                     let mut wakers = ctx.wrapper.wakers.lock().unwrap();
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
+                /*
                 let jsExec = format!("(async function (complete, error) {{
                     {}
-                }})(this.__async_callback({}, false), this.__async_callback({}, true));", this.code, idx, idx);
+                }})(this.__async_callback({}, false), this.__async_callback({}, true));", this.code, idx, idx);*/
+                let jsExec = format!("
+                    this.__async_values[{}] = [false, undefined];
+                    this.__async_values[{}][1] = await (async function() {{
+                        {}
+                    }})
+                ", idx, idx, this.code);
                 ctx.eval(jsExec.as_str()).unwrap();
             });
             std::task::Poll::Pending

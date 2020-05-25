@@ -1129,10 +1129,11 @@ impl ContextWrapper {
         let wakers = Arc::clone(&self.wakers);
 
         self.add_callback("rs_async_callback", move |index: i32| {
-            let waker = wakers.lock().unwrap();
+            let mut waker = wakers.lock().unwrap();
             match waker.get(&(index as u64)) {
                 Some(x) => {
                     x.clone().wake();
+                    waker.remove(&(index as u64));
                 },
                 None => {
 
