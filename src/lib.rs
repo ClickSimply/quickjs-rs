@@ -228,6 +228,7 @@ X::Error: Into<ValueError> {
                 let jsExec = format!("(function (complete, error) {{
                     {:?}
                 }})(this.__async_callback({}, false), this.__async_callback({}, true));", this.code, idx, idx);
+                println!("JS: {}", jsExec);
                 ctx.eval(jsExec.as_str()).unwrap();
             });
             std::task::Poll::Pending
