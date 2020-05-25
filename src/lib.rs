@@ -40,6 +40,8 @@ pub mod console;
 mod droppable_value;
 mod value;
 
+use core::marker::PhantomData;
+use std::thread::LocalKey;
 use crate::bindings::OwnedValueRef;
 use core::future::Future;
 use std::{convert::TryFrom, error, fmt};
@@ -165,6 +167,66 @@ impl ContextBuilder {
     }
 }
 
+/// Exectute async javascript
+pub struct JsAsync<X> {
+    context: &'static LocalKey<Context>,
+    code: String,
+    p: Option<PhantomData<X>>,
+    setup: bool,
+    index: u64
+}
+
+impl<X: std::convert::From<value::JsValue>> JsAsync<X> {
+    /// fire off async javascript
+    pub fn exec(context: &'static LocalKey<Context>, code: String) -> JsAsync<X> {
+        JsAsync {
+            context: context,
+            code: code,
+            p: None,
+            setup: false,
+            index: 0
+        }
+    }
+}
+
+impl<X: std::convert::From<value::JsValue>> Unpin for JsAsync<X> {
+
+}
+
+impl<X: std::convert::From<value::JsValue>> Future for JsAsync<X> {
+    type Output = std::result::Result<X, ExecutionError>;
+    fn poll(self: std::pin::Pin<&mut Self>, task_ctx: &mut std::task::Context<'_>) -> std::task::Poll<<Self>::Output> { 
+        
+        let this = std::pin::Pin::into_inner(self);
+
+        if this.setup {
+            this.context.with(|ctx| {
+                let js = format!("this.__async_values[{}][1];", this.index);
+                let mut wakers = ctx.wrapper.wakers.lock().unwrap();
+                wakers.remove(&this.index);
+                std::task::Poll::Ready(ctx.eval_as::<X>(js.as_str()))
+            })
+        } else {
+            this.setup = true;
+            this.context.with(|ctx| {
+                let mut idx;
+                {
+                    let mut ct = *ctx.wrapper.wakerCt.lock().unwrap();
+                    idx = ct;
+                    ct += 1;
+                }
+                this.index = idx;
+                let mut wakers = ctx.wrapper.wakers.lock().unwrap();
+                wakers.insert(idx, task_ctx.waker().clone());
+                let jsExec = format!("(function (complete, error) {{
+                    {:?}
+                }})(this.__async_callback({}, false), this.__async_callback({}, true));", this.code, idx, idx);
+            });
+            std::task::Poll::Pending
+        }
+    }
+}
+
 /// Context is a wrapper around a QuickJS Javascript context.
 /// It is the primary way to interact with the runtime.
 ///
@@ -173,7 +235,8 @@ impl ContextBuilder {
 /// different contexts in different threads, but each
 /// `Context` instance must be used only from a single thread.
 pub struct Context {
-    wrapper: bindings::ContextWrapper,
+    /// QuickJS Context Wrapper
+    pub wrapper: bindings::ContextWrapper,
 }
 
 impl Context {
@@ -253,7 +316,7 @@ impl Context {
     pub fn setup_async(&self) -> Result<(), ExecutionError>    {
         self.wrapper.setup_async()
     }
-
+/*
     /// Eval with await
     pub async fn eval_async<R>(&self, code: &str) -> Result<R, ExecutionError>    
         where
@@ -264,7 +327,7 @@ impl Context {
         let ret = R::try_from(value).map_err(|e| e.into())?;
         Ok(ret)
     }
-
+*/
     /// Evaluates Javascript code and returns the value of the final expression
     /// as a Rust type.
     ///

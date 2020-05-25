@@ -797,8 +797,8 @@ pub struct ContextWrapper {
     /// the closure.
     // A Mutex is used over a RefCell because it needs to be unwind-safe.
     callbacks: Mutex<Vec<(Box<WrappedCallback>, Box<q::JSValue>)>>,
-    wakers: Arc<Mutex<HashMap<u64, Waker>>>,
-    wakerCt: Rc<RefCell<u64>>
+    pub wakers: Arc<Mutex<HashMap<u64, Waker>>>,
+    pub wakerCt: Arc<Mutex<u64>>
 }
 
 impl Drop for ContextWrapper {
@@ -810,6 +810,7 @@ impl Drop for ContextWrapper {
     }
 }
 
+/*
 struct AsyncJavascript<'a> {
     pub value: OwnedValueRef<'a>,
     pub wakers: Arc<Mutex<HashMap<u64, Waker>>>,
@@ -833,8 +834,7 @@ impl<'a> Future for AsyncJavascript<'a> {
             return std::task::Poll::Ready(());
         }
     }
-
-}
+}*/
 
 unsafe extern "C" fn init(ctx: *mut q::JSContext, m: *mut q::JSModuleDef) -> i32 {
 
@@ -909,7 +909,7 @@ impl ContextWrapper {
             context,
             callbacks: Mutex::new(Vec::new()),
             wakers: Arc::new(Mutex::new(HashMap::new())),
-            wakerCt: Rc::new(RefCell::new(0))
+            wakerCt: Arc::new(Mutex::new(0))
         };
 
         Ok(wrapper)
@@ -1129,11 +1129,10 @@ impl ContextWrapper {
         let wakers = Arc::clone(&self.wakers);
 
         self.add_callback("rs_async_callback", move |index: i32| {
-            let mut waker = wakers.lock().unwrap();
+            let waker = wakers.lock().unwrap();
             match waker.get(&(index as u64)) {
                 Some(x) => {
                     x.clone().wake();
-                    waker.remove(&(index as u64)).unwrap();
                 },
                 None => {
 
@@ -1154,7 +1153,7 @@ impl ContextWrapper {
 
         Ok(())
     }
-
+/*
     pub async fn eval_async<'a>(&'a self, code: &str) ->  Result<OwnedValueRef<'a>, ExecutionError> {
         let filename = "script.js";
         let filename_c = make_cstring(filename)?;
@@ -1200,7 +1199,7 @@ impl ContextWrapper {
 
         self.resolve_value(OwnedValueRef::new(self, value_raw_result))
     }
-
+*/
     /// Evaluate javascript code.
     pub fn eval<'a>(&'a self, code: &str) -> Result<OwnedValueRef<'a>, ExecutionError> {
         let filename = "script.js";
