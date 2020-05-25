@@ -204,7 +204,6 @@ X::Error: Into<ValueError> {
 
         if this.setup {
             this.context.with(|ctx| {
-                ctx.step();
                 let js = format!("this.__async_values[{}][1];", this.index);
                 std::task::Poll::Ready(ctx.eval_as::<X>(js.as_str()))
             })
@@ -227,9 +226,9 @@ X::Error: Into<ValueError> {
                     {}
                 }})(this.__async_callback({}, false), this.__async_callback({}, true));", this.code, idx, idx);*/
                 let jsExec = format!("
-                    (async function() {{
+                    ((async function() {{
                         {}
-                    }})().then((result) => {{
+                    }})()).then((result) => {{
                         print('then');
                         __async_values[{}] = [false, result];
                         rs_async_callback({});
