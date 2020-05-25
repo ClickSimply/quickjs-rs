@@ -1143,6 +1143,7 @@ impl ContextWrapper {
         })?;
 
         self.eval("
+            var global = this;
             this.__async_values = [];
             this.__async_callback = (idx, error) => {
                 return (result) => {
