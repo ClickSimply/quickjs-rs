@@ -223,19 +223,12 @@ X::Error: Into<ValueError> {
                 }
                 
                 let jsExec = format!("(async function (complete, error) {{
-                    {}
-                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
-                /*let jsExec = format!("
-                    (async function() {{
+                    try {{
                         {}
-                    }})().then((result) => {{
-                        __async_values[{}] = [false, result];
-                        rs_async_callback({});
-                    }}).catch((err) => {{
-                        __async_values[{}] = [true, err];
-                        rs_async_callback({});
-                    }})
-                ", this.code, idx, idx, idx, idx);*/
+                    }} catch (e) {{
+                        error(e);  
+                    }}
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
                 ctx.eval(jsExec.as_str()).unwrap();
             });
             std::task::Poll::Pending
