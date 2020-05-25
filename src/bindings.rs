@@ -1143,15 +1143,13 @@ impl ContextWrapper {
         })?;
 
         self.eval("
-            if (!__async_values) {
-                let __async_values = [];
-                let __async_callback = (idx, error) => {
-                    return (result) => {
-                        let __async_values[idx] = [error, result];
-                        rs_async_callback(idx);
-                    }
-                };
-            }
+            let __async_values = [];
+            let __async_callback = (idx, error) => {
+                return (result) => {
+                    __async_values[idx] = [error, result];
+                    rs_async_callback(idx);
+                }
+            };
         ")?;
 
         Ok(())
