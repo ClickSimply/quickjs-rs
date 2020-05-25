@@ -225,7 +225,7 @@ X::Error: Into<ValueError> {
                     let mut wakers = ctx.wrapper.wakers.lock().unwrap();
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
-                let jsExec = format!("(function (complete, error) {{
+                let jsExec = format!("(async function (complete, error) {{
                     {}
                 }})(this.__async_callback({}, false), this.__async_callback({}, true));", this.code, idx, idx);
                 ctx.eval(jsExec.as_str()).unwrap();
