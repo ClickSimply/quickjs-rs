@@ -221,23 +221,21 @@ X::Error: Into<ValueError> {
                     let mut wakers = ctx.wrapper.wakers.lock().unwrap();
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
-                /*
+                
                 let jsExec = format!("(async function (complete, error) {{
                     {}
-                }})(this.__async_callback({}, false), this.__async_callback({}, true));", this.code, idx, idx);*/
-                let jsExec = format!("
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
+                /*let jsExec = format!("
                     (async function() {{
                         {}
                     }})().then((result) => {{
-                        print('then');
                         __async_values[{}] = [false, result];
                         rs_async_callback({});
                     }}).catch((err) => {{
-                        print('catch');
                         __async_values[{}] = [true, err];
                         rs_async_callback({});
                     }})
-                ", this.code, idx, idx, idx, idx);
+                ", this.code, idx, idx, idx, idx);*/
                 ctx.eval(jsExec.as_str()).unwrap();
             });
             std::task::Poll::Pending
