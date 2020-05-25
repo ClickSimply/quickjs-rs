@@ -238,6 +238,7 @@ X::Error: Into<ValueError> {
                     }})
                 ", this.code, idx, idx, idx, idx);
                 ctx.eval(jsExec.as_str()).unwrap();
+                ctx.step();
             });
             std::task::Poll::Pending
         }
