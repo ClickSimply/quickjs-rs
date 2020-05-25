@@ -176,7 +176,7 @@ pub struct JsAsync<X> {
     index: u64
 }
 
-impl<X: std::convert::From<value::JsValue>> JsAsync<X> {
+impl<X: TryFrom<JsValue>> JsAsync<X> {
     /// fire off async javascript
     pub fn exec(context: &'static LocalKey<Context>, code: String) -> JsAsync<X> {
         JsAsync {
@@ -189,11 +189,11 @@ impl<X: std::convert::From<value::JsValue>> JsAsync<X> {
     }
 }
 
-impl<X: std::convert::From<value::JsValue>> Unpin for JsAsync<X> {
+impl<X: TryFrom<JsValue>> Unpin for JsAsync<X> {
 
 }
 
-impl<X: std::convert::From<value::JsValue>> Future for JsAsync<X> {
+impl<X: TryFrom<JsValue>> Future for JsAsync<X> {
     type Output = std::result::Result<X, ExecutionError>;
     fn poll(self: std::pin::Pin<&mut Self>, task_ctx: &mut std::task::Context<'_>) -> std::task::Poll<<Self>::Output> { 
         
