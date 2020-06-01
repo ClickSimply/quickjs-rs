@@ -204,7 +204,7 @@ impl JsAsync {
 
         let result = context.with(|ctx| -> Result<(), ExecutionError> {
 
-            let has_async_values = ctx.eval_as::<bool>("this.__async_values !== undefined;")?;
+            let has_async_values = ctx.eval_as::<bool>("this.__async_values !== undefined")?;
 
             if has_async_values == false {
 
