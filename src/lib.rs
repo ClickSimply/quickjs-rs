@@ -345,20 +345,20 @@ X::Error: Into<ValueError> {
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
                 
-                /*let js_exec = format!("(async function (complete, error) {{
+                let js_exec = format!("(async function (complete, error) {{
                     try {{
                         {}
                     }} catch (e) {{
                         error(e);  
                     }}
-                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);*/
-                let js_exec = format!("(async function() {{
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
+                /*let js_exec = format!("(async function() {{
                     {}
                 }})().then((data) => {{
                     __async_callback({}, false)(data);
                 }}).catch((data) => {{
                     __async_callback({}, true)(data);
-                }});", this.code, idx, idx);
+                }});", this.code, idx, idx);*/
                 ctx.eval(js_exec.as_str())
             })?;
             std::task::Poll::Pending
@@ -415,20 +415,20 @@ impl Future for AsyncJavascriptFutureNoValue {
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
                 
-                /*let js_exec = format!("(async function (complete, error) {{
+                let js_exec = format!("(async function (complete, error) {{
                     try {{
                         {}
                     }} catch (e) {{
                         error(e);  
                     }}
-                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);*/
-                let js_exec = format!("(async function() {{
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
+                /*let js_exec = format!("(async function() {{
                     {}
                 }})().then((data) => {{
                     __async_callback({}, false)(data);
                 }}).catch((data) => {{
                     __async_callback({}, true)(data);
-                }});", this.code, idx, idx);
+                }});", this.code, idx, idx);*/
                 ctx.eval(js_exec.as_str())
             })?;
             std::task::Poll::Pending
