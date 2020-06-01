@@ -236,30 +236,6 @@ impl JsAsync {
                     };
                 ")?;
 
-                // setTimeout
-                ctx.eval("
-                    const __timer_callbacks = []; 
-                    const __create_interval = (kind) => {
-                        return function(cb, timeout) {
-                            let callArgs = [];
-                            for (let i = 2; i < arguments.length; i ++) {
-                                callArgs.push(arguments[i]);
-                            }
-                            let len = __timer_callbacks.length;
-                            __timer_callbacks.push([cb, callArgs]);
-                            __async_timers(len, Math.abs(typeof timeout == 'number' ? timeout : 0), kind);
-                            return len;
-                        };
-                    };
-                    const setTimeout = __create_interval(0);
-                    const setInterval = __create_interval(1);
-                    const clearTimeout = function(index) {
-                        if (__timer_callbacks[index]) {
-                            delete __timer_callbacks[index];
-                        }
-                    };
-                    const clearInterval = clearTimeout;
-                ").unwrap();
                 
 
             }
