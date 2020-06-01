@@ -202,12 +202,7 @@ impl JsAsync {
     /// setup context for async calls
     pub fn init(context: &'static LocalKey<Context>) -> Result<(), ExecutionError> {
 
-        Ok(context.with(|ctx| -> Result<(), ExecutionError> {
-
-   
-
-            Ok(())
-        })?)
+        Ok(())
     }
 }
 
