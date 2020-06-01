@@ -202,7 +202,88 @@ impl JsAsync {
     /// setup context for async calls
     pub fn init(context: &'static LocalKey<Context>) -> Result<(), ExecutionError> {
 
-        Ok(())
+        let result = context.with(|ctx| -> Result<(), ExecutionError> {
+
+            let has_async_values = ctx.eval_as::<bool>("this.__async_values !== undefined;")?;
+
+            if has_async_values == false {
+
+                let wakers = Arc::clone(&ctx.wrapper.wakers);
+
+                // setup async for operations
+                // this is the js / rust async await cross over
+                ctx.add_callback("__rs_async_callback", move |index: i32| {
+                    let mut waker = wakers.lock().unwrap();
+                    match waker.get(&(index as u64)) {
+                        Some(x) => {
+                            x.clone().wake();
+                            waker.remove(&(index as u64));
+                        },
+                        None => {
+    
+                        }
+                    }
+                    0i32
+                })?;
+    
+                ctx.eval("
+                    this.__async_values = [];
+                    const __async_callback = (idx, error) => {
+                        return (result) => {
+                            __async_values[idx] = [error, result];
+                            __rs_async_callback(idx);
+                        };
+                    };
+                ")?;
+
+                // setTimeout
+                ctx.eval("
+                    const __timer_callbacks = []; 
+                    const __create_interval = (kind) => {
+                        return function(cb, timeout) {
+                            let callArgs = [];
+                            for (let i = 2; i < arguments.length; i ++) {
+                                callArgs.push(arguments[i]);
+                            }
+                            let len = __timer_callbacks.length;
+                            __timer_callbacks.push([cb, callArgs]);
+                            __async_timers(len, Math.abs(typeof timeout == 'number' ? timeout : 0), kind);
+                            return len;
+                        };
+                    };
+                    const setTimeout = __create_interval(0);
+                    const setInterval = __create_interval(1);
+                    const clearTimeout = function(index) {
+                        if (__timer_callbacks[index]) {
+                            delete __timer_callbacks[index];
+                        }
+                    };
+                    const clearInterval = clearTimeout;
+                ").unwrap();
+                
+                ctx.add_callback("__async_timers", move |index: i32, timeout: i32, kind: i32| {
+                    let time = timeout as u64;
+                    let idx = index;
+                    tokio::task::spawn_local(async move {
+                        tokio::time::delay_for(Duration::from_millis(time)).await;
+                        context.with(|ctx| {
+                            ctx.eval(format!("if (__timer_callbacks[{}]) {{
+                                __timer_callbacks[{}][0].apply(undefined, __timer_callbacks[{}][1]);
+                                if ({} == 1) {{ // setInterval
+                                    __async_timers({}, {}, 1);
+                                }}
+                            }}", idx, idx, idx, kind, idx, timeout).as_str()).unwrap();
+                        });
+                    });
+
+                    index
+                }).unwrap();
+            }
+
+            Ok(())
+        })?;
+
+        Ok(result)
     }
 }
 
