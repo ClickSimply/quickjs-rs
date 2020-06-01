@@ -1044,8 +1044,8 @@ impl ContextWrapper {
             Err(err)
         } else if value.is_object() {
             let obj = OwnedObjectRef::new(value)?;
-            // Ok(obj.into_value())
-            if obj.is_promise()? {
+            Ok(obj.into_value())
+            /*if obj.is_promise()? {
                 self.eval(
                     r#"
                     // Values:
@@ -1105,7 +1105,7 @@ impl ContextWrapper {
                 }
             } else {
                 Ok(obj.into_value())
-            }
+            }*/
         } else {
             Ok(value)
         }
