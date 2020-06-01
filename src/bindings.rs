@@ -1044,8 +1044,8 @@ impl ContextWrapper {
             Err(err)
         } else if value.is_object() {
             let obj = OwnedObjectRef::new(value)?;
-            Ok(obj.into_value())
-            /*if obj.is_promise()? {
+            // Ok(obj.into_value())
+            if obj.is_promise()? {
                 self.eval(
                     r#"
                     // Values:
@@ -1105,7 +1105,7 @@ impl ContextWrapper {
                 }
             } else {
                 Ok(obj.into_value())
-            }*/
+            }
         } else {
             Ok(value)
         }
@@ -1117,42 +1117,6 @@ impl ContextWrapper {
             let ctx_mut = &mut (*wrapper_mut).context;
             q::JS_ExecutePendingJob(self.runtime, ctx_mut);
         }
-
-        /*for w in self.wakers.borrow().iter() {
-            w.1.clone().wake();
-        }*/
-    }
-
-    /// Setup async calls
-    pub fn setup_async(&self) -> Result<(), ExecutionError> {
-
-        let wakers = Arc::clone(&self.wakers);
-
-        self.add_callback("rs_async_callback", move |index: i32| {
-            let mut waker = wakers.lock().unwrap();
-            match waker.get(&(index as u64)) {
-                Some(x) => {
-                    x.clone().wake();
-                    waker.remove(&(index as u64));
-                },
-                None => {
-
-                }
-            }
-            0i32
-        })?;
-
-        self.eval("
-            let __async_values = [];
-            let __async_callback = (idx, error) => {
-                return (result) => {
-                    __async_values[idx] = [error, result];
-                    rs_async_callback(idx);
-                }
-            };
-        ")?;
-
-        Ok(())
     }
 /*
     pub async fn eval_async<'a>(&'a self, code: &str) ->  Result<OwnedValueRef<'a>, ExecutionError> {

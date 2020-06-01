@@ -40,11 +40,15 @@ pub mod console;
 mod droppable_value;
 mod value;
 
+use std::rc::Rc;
+use core::task::Poll;
+use core::pin::Pin;
 use core::marker::PhantomData;
 use std::thread::LocalKey;
 use crate::bindings::OwnedValueRef;
 use core::future::Future;
-use std::{convert::TryFrom, error, fmt};
+use std::{convert::TryFrom, error, fmt, sync::Arc};
+use tokio::time::{Duration, Instant};
 
 pub use callback::{Arguments, Callback};
 pub use value::*;
@@ -165,22 +169,18 @@ impl ContextBuilder {
         }
         Ok(Context::from_wrapper(wrapper))
     }
+
 }
 
-/// Exectute async javascript
-pub struct JsAsync<X> {
-    context: &'static LocalKey<Context>,
-    code: String,
-    p: Option<PhantomData<X>>,
-    setup: bool,
-    index: u64
+/// Do stuff with Async Javascript
+pub struct JsAsync {
+
 }
 
-impl<X> JsAsync<X> where X: TryFrom<JsValue>,
-X::Error: Into<ValueError> {
+impl JsAsync {
     /// fire off async javascript
-    pub fn exec(context: &'static LocalKey<Context>, code: String) -> JsAsync<X> {
-        JsAsync {
+    pub fn eval_as<X>(context: &'static LocalKey<Context>, code: String) -> AsyncJavascriptFuture<X> {
+        AsyncJavascriptFuture {
             context: context,
             code: code,
             p: None,
@@ -188,28 +188,149 @@ X::Error: Into<ValueError> {
             index: 0
         }
     }
+
+    /// fire off async javascript without typed return
+    pub fn eval(context: &'static LocalKey<Context>, code: String) -> AsyncJavascriptFutureNoValue {
+        AsyncJavascriptFutureNoValue {
+            context: context,
+            code: code,
+            setup: false,
+            index: 0
+        }
+    }
+
+    /// setup context for async calls
+    pub fn init(context: &'static LocalKey<Context>) -> Result<(), ExecutionError> {
+
+        Ok(context.with(|ctx| -> Result<(), ExecutionError> {
+
+            let has_async_values = ctx.eval_as::<bool>("__async_values !== undefined;")?;
+
+            if has_async_values == false {
+
+                let wakers = Arc::clone(&ctx.wrapper.wakers);
+
+                // setup async for operations
+                // this is the js / rust async await cross over
+                ctx.add_callback("__rs_async_callback", move |index: i32| {
+                    let mut waker = wakers.lock().unwrap();
+                    match waker.get(&(index as u64)) {
+                        Some(x) => {
+                            x.clone().wake();
+                            waker.remove(&(index as u64));
+                        },
+                        None => {
+    
+                        }
+                    }
+                    0i32
+                })?;
+    
+                ctx.eval("
+                    const __async_values = [];
+                    const __async_callback = (idx, error) => {
+                        return (result) => {
+                            __async_values[idx] = [error, result];
+                            __rs_async_callback(idx);
+                        };
+                    };
+                ")?;
+
+                // setTimeout
+                ctx.eval("
+                    const __timer_callbacks = []; 
+                    const __create_interval = (kind) => {
+                        return function(cb, timeout) {
+                            let callArgs = [];
+                            for (let i = 2; i < arguments.length; i ++) {
+                                callArgs.push(arguments[i]);
+                            }
+                            let len = __timer_callbacks.length;
+                            __timer_callbacks.push([cb, callArgs]);
+                            __async_timers(len, Math.abs(typeof timeout == 'number' ? timeout : 0), kind);
+                            return len;
+                        };
+                    };
+                    const setTimeout = __create_interval(0);
+                    const setInterval = __create_interval(1);
+                    const clearTimeout = function(index) {
+                        if (__timer_callbacks[index]) {
+                            delete __timer_callbacks[index];
+                        }
+                    };
+                    const clearInterval = clearTimeout;
+                ").unwrap();
+                
+                ctx.add_callback("__async_timers", move |index: i32, timeout: i32, kind: i32| {
+                    let time = timeout as u64;
+                    let idx = index;
+                    tokio::task::spawn_local(async move {
+                        tokio::time::delay_for(Duration::from_millis(time)).await;
+                        context.with(|ctx| {
+                            ctx.eval(format!("if (__timer_callbacks[{}]) {{
+                                __timer_callbacks[{}][0].apply(undefined, __timer_callbacks[{}][1]);
+                                if ({} == 1) {{ // setInterval
+                                    __async_timers({}, {}, 1);
+                                }}
+                            }}", idx, idx, idx, kind, idx, timeout).as_str()).unwrap();
+                        });
+                    });
+
+                    index
+                }).unwrap();
+            }
+
+            Ok(())
+        })?)
+    }
 }
 
-impl<X> Unpin for JsAsync<X> where X: TryFrom<JsValue>,
+
+/// Exectute async javascript
+pub struct AsyncJavascriptFuture<X> {
+    context: &'static LocalKey<Context>,
+    code: String,
+    p: Option<PhantomData<X>>,
+    setup: bool,
+    index: u64
+}
+
+impl<X> AsyncJavascriptFuture<X> where X: TryFrom<JsValue>,
+X::Error: Into<ValueError> {
+
+
+}
+
+impl<X> Unpin for AsyncJavascriptFuture<X> where X: TryFrom<JsValue>,
 X::Error: Into<ValueError>  {
 
 }
 
-impl<X> Future for JsAsync<X> where X: TryFrom<JsValue>,
+impl<X> Future for AsyncJavascriptFuture<X> where X: TryFrom<JsValue>,
 X::Error: Into<ValueError> {
-    type Output = std::result::Result<X, ExecutionError>;
-    fn poll(self: std::pin::Pin<&mut Self>, task_ctx: &mut std::task::Context<'_>) -> std::task::Poll<<Self>::Output> { 
+    type Output = Result<X, ExecutionError>;
+    fn poll(self: Pin<&mut Self>, task_ctx: &mut std::task::Context<'_>) -> Poll<<Self>::Output> { 
         
-        let this = std::pin::Pin::into_inner(self);
+        let this = Pin::into_inner(self);
 
         if this.setup {
             this.context.with(|ctx| {
-                let js = format!("__async_values[{}][1];", this.index);
-                std::task::Poll::Ready(ctx.eval_as::<X>(js.as_str()))
+                let js = format!("__async_values[{}][0];", this.index);
+                let is_error = ctx.eval_as::<bool>(js.as_str())?;
+                if is_error {
+                    let js = format!("__async_values[{}][1];", this.index);
+                    std::task::Poll::Ready(Err(ExecutionError::Exception(ctx.eval(js.as_str())?)))
+                } else {
+                    let js = format!("__async_values[{}][1];", this.index);
+                    let value = ctx.eval_as::<X>(js.as_str());
+                    ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
+                    std::task::Poll::Ready(value)
+                }
+
             })
         } else {
             this.setup = true;
-            this.context.with(|ctx| {
+            this.context.with(|ctx| -> Result<JsValue, ExecutionError> {
                 let idx;
                 {
                     let mut ct = *ctx.wrapper.wakerCt.lock().unwrap();
@@ -222,15 +343,92 @@ X::Error: Into<ValueError> {
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
                 
-                let jsExec = format!("(async function (complete, error) {{
+                /*let js_exec = format!("(async function (complete, error) {{
                     try {{
                         {}
                     }} catch (e) {{
                         error(e);  
                     }}
-                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
-                ctx.eval(jsExec.as_str()).unwrap();
-            });
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);*/
+                let js_exec = format!("(async function() {{
+                    {}
+                }})().then((data) => {{
+                    __async_callback({}, false)(data);
+                }}).catch((data) => {{
+                    __async_callback({}, true)(data);
+                }}", this.code, idx, idx);
+                ctx.eval(js_exec.as_str())
+            })?;
+            std::task::Poll::Pending
+        }
+    }
+}
+
+
+/// Exectute async javascript
+pub struct AsyncJavascriptFutureNoValue {
+    context: &'static LocalKey<Context>,
+    code: String,
+    setup: bool,
+    index: u64
+}
+
+impl Unpin for AsyncJavascriptFutureNoValue  {
+
+}
+
+impl Future for AsyncJavascriptFutureNoValue {
+    type Output = Result<JsValue, ExecutionError>;
+    fn poll(self: Pin<&mut Self>, task_ctx: &mut std::task::Context<'_>) -> Poll<<Self>::Output> { 
+        
+        let this = Pin::into_inner(self);
+
+        if this.setup {
+            this.context.with(|ctx| {
+                let js = format!("__async_values[{}][0];", this.index);
+                let is_error = ctx.eval_as::<bool>(js.as_str())?;
+                if is_error {
+                    let js = format!("__async_values[{}][1];", this.index);
+                    std::task::Poll::Ready(Err(ExecutionError::Exception(ctx.eval(js.as_str())?)))
+                } else {
+                    let js = format!("__async_values[{}][1];", this.index);
+                    let value = ctx.eval(js.as_str());
+                    ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
+                    std::task::Poll::Ready(value)
+                }
+            })
+        } else {
+            this.setup = true;
+
+            this.context.with(|ctx| -> Result<JsValue, ExecutionError> {
+                let idx;
+                {
+                    let mut ct = *ctx.wrapper.wakerCt.lock().unwrap();
+                    idx = ct;
+                    ct += 1;
+                }
+                this.index = idx;
+                {
+                    let mut wakers = ctx.wrapper.wakers.lock().unwrap();
+                    wakers.insert(idx, task_ctx.waker().clone());
+                }
+                
+                /*let js_exec = format!("(async function (complete, error) {{
+                    try {{
+                        {}
+                    }} catch (e) {{
+                        error(e);  
+                    }}
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);*/
+                let js_exec = format!("(async function() {{
+                    {}
+                }})().then((data) => {{
+                    __async_callback({}, false)(data);
+                }}).catch((data) => {{
+                    __async_callback({}, true)(data);
+                }}", this.code, idx, idx);
+                ctx.eval(js_exec.as_str())
+            })?;
             std::task::Poll::Pending
         }
     }
@@ -321,22 +519,6 @@ impl Context {
         self.wrapper.step();
     }
 
-    /// setup for async await
-    pub fn setup_async(&self) -> Result<(), ExecutionError>    {
-        self.wrapper.setup_async()
-    }
-/*
-    /// Eval with await
-    pub async fn eval_async<R>(&self, code: &str) -> Result<R, ExecutionError>    
-        where
-        R: TryFrom<JsValue>,
-        R::Error: Into<ValueError> {
-        let value_raw = self.wrapper.eval_async(code).await?;
-        let value = value_raw.to_value()?;
-        let ret = R::try_from(value).map_err(|e| e.into())?;
-        Ok(ret)
-    }
-*/
     /// Evaluates Javascript code and returns the value of the final expression
     /// as a Rust type.
     ///
@@ -1045,3 +1227,4 @@ mod tests {
         );
     }
 }
+
