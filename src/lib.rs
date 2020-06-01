@@ -358,7 +358,7 @@ X::Error: Into<ValueError> {
                     __async_callback({}, false)(data);
                 }}).catch((data) => {{
                     __async_callback({}, true)(data);
-                }}", this.code, idx, idx);
+                }});", this.code, idx, idx);
                 ctx.eval(js_exec.as_str())
             })?;
             std::task::Poll::Pending
@@ -428,7 +428,7 @@ impl Future for AsyncJavascriptFutureNoValue {
                     __async_callback({}, false)(data);
                 }}).catch((data) => {{
                     __async_callback({}, true)(data);
-                }}", this.code, idx, idx);
+                }});", this.code, idx, idx);
                 ctx.eval(js_exec.as_str())
             })?;
             std::task::Poll::Pending
