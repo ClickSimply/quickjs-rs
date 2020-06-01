@@ -204,7 +204,7 @@ impl JsAsync {
 
         Ok(context.with(|ctx| -> Result<(), ExecutionError> {
 
-            let has_async_values = ctx.eval_as::<bool>("__async_values !== undefined;")?;
+            let has_async_values = ctx.eval_as::<bool>("this.__async_values !== undefined;")?;
 
             if has_async_values == false {
 
@@ -227,10 +227,10 @@ impl JsAsync {
                 })?;
     
                 ctx.eval("
-                    const __async_values = [];
+                    this.__async_values = [];
                     const __async_callback = (idx, error) => {
                         return (result) => {
-                            __async_values[idx] = [error, result];
+                            this.__async_values[idx] = [error, result];
                             __rs_async_callback(idx);
                         };
                     };
@@ -315,15 +315,15 @@ X::Error: Into<ValueError> {
 
         if this.setup {
             this.context.with(|ctx| {
-                let js = format!("__async_values[{}][0];", this.index);
+                let js = format!("this.__async_values[{}][0];", this.index);
                 let is_error = ctx.eval_as::<bool>(js.as_str())?;
                 if is_error {
-                    let js = format!("__async_values[{}][1];", this.index);
+                    let js = format!("this.__async_values[{}][1];", this.index);
                     std::task::Poll::Ready(Err(ExecutionError::Exception(ctx.eval(js.as_str())?)))
                 } else {
-                    let js = format!("__async_values[{}][1];", this.index);
+                    let js = format!("this.__async_values[{}][1];", this.index);
                     let value = ctx.eval_as::<X>(js.as_str());
-                    ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
+                    ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
                     std::task::Poll::Ready(value)
                 }
 
@@ -385,15 +385,15 @@ impl Future for AsyncJavascriptFutureNoValue {
 
         if this.setup {
             this.context.with(|ctx| {
-                let js = format!("__async_values[{}][0];", this.index);
+                let js = format!("this.__async_values[{}][0];", this.index);
                 let is_error = ctx.eval_as::<bool>(js.as_str())?;
                 if is_error {
-                    let js = format!("__async_values[{}][1];", this.index);
+                    let js = format!("this.__async_values[{}][1];", this.index);
                     std::task::Poll::Ready(Err(ExecutionError::Exception(ctx.eval(js.as_str())?)))
                 } else {
-                    let js = format!("__async_values[{}][1];", this.index);
+                    let js = format!("this.__async_values[{}][1];", this.index);
                     let value = ctx.eval(js.as_str());
-                    ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
+                    ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
                     std::task::Poll::Ready(value)
                 }
             })
