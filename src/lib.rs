@@ -261,23 +261,7 @@ impl JsAsync {
                     const clearInterval = clearTimeout;
                 ").unwrap();
                 
-                ctx.add_callback("__async_timers", move |index: i32, timeout: i32, kind: i32| {
-                    let time = timeout as u64;
-                    let idx = index;
-                    tokio::task::spawn_local(async move {
-                        tokio::time::delay_for(Duration::from_millis(time)).await;
-                        context.with(|ctx| {
-                            ctx.eval(format!("if (__timer_callbacks[{}]) {{
-                                __timer_callbacks[{}][0].apply(undefined, __timer_callbacks[{}][1]);
-                                if ({} == 1) {{ // setInterval
-                                    __async_timers({}, {}, 1);
-                                }}
-                            }}", idx, idx, idx, kind, idx, timeout).as_str()).unwrap();
-                        });
-                    });
 
-                    index
-                }).unwrap();
             }
 
             Ok(())
