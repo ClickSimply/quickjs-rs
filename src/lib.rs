@@ -204,41 +204,7 @@ impl JsAsync {
 
         Ok(context.with(|ctx| -> Result<(), ExecutionError> {
 
-            let has_async_values = ctx.eval_as::<bool>("this.__async_values !== undefined;")?;
-
-            if has_async_values == false {
-
-                let wakers = Arc::clone(&ctx.wrapper.wakers);
-
-                // setup async for operations
-                // this is the js / rust async await cross over
-                ctx.add_callback("__rs_async_callback", move |index: i32| {
-                    let mut waker = wakers.lock().unwrap();
-                    match waker.get(&(index as u64)) {
-                        Some(x) => {
-                            x.clone().wake();
-                            waker.remove(&(index as u64));
-                        },
-                        None => {
-    
-                        }
-                    }
-                    0i32
-                })?;
-    
-                ctx.eval("
-                    this.__async_values = [];
-                    const __async_callback = (idx, error) => {
-                        return (result) => {
-                            this.__async_values[idx] = [error, result];
-                            __rs_async_callback(idx);
-                        };
-                    };
-                ")?;
-
-                
-
-            }
+   
 
             Ok(())
         })?)
