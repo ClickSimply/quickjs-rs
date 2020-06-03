@@ -418,9 +418,9 @@ impl Future for AsyncJavascriptFutureNoValue {
                         error(e);  
                     }}
                 }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);*/
-                let js_exec = format!("this.__async_values[{}] = [(async function() {{
+                let js_exec = format!("this.__async_values[{}] = [false, (async function() {{
                     {}
-                }})(), false];", idx, this.code);
+                }})()];", idx, this.code);
                 ctx.eval(js_exec.as_str())
             })?;
             std::task::Poll::Pending
