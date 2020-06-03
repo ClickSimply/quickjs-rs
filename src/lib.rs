@@ -321,7 +321,9 @@ X::Error: Into<ValueError> {
                 let is_error = ctx.eval_as::<bool>(js.as_str())?;
                 if is_error {
                     let js = format!("this.__async_values[{}][1];", this.index);
-                    std::task::Poll::Ready(Err(ExecutionError::Exception(ctx.eval(js.as_str())?)))
+                    let value = ctx.eval(js.as_str())?;
+                    ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                    std::task::Poll::Ready(Err(ExecutionError::Exception(value)))
                 } else {
                     let js = format!("this.__async_values[{}][1];", this.index);
                     let value = ctx.eval_as::<X>(js.as_str());
@@ -345,16 +347,13 @@ X::Error: Into<ValueError> {
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
                 
-                /*let js_exec = format!("(async function (complete, error) {{
+                let js_exec = format!("(async function (complete, error) {{
                     try {{
                         {}
                     }} catch (e) {{
                         error(e);  
                     }}
-                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);*/
-                let js_exec = format!("this.__async_values[{}] = [false, (async function() {{
-                    {}
-                }})()];", idx, this.code);
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
                 ctx.eval(js_exec.as_str())
             })?;
             std::task::Poll::Pending
@@ -387,7 +386,9 @@ impl Future for AsyncJavascriptFutureNoValue {
                 let is_error = ctx.eval_as::<bool>(js.as_str())?;
                 if is_error {
                     let js = format!("this.__async_values[{}][1];", this.index);
-                    std::task::Poll::Ready(Err(ExecutionError::Exception(ctx.eval(js.as_str())?)))
+                    let value = ctx.eval(js.as_str())?;
+                    ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                    std::task::Poll::Ready(Err(ExecutionError::Exception(value)))
                 } else {
                     let js = format!("this.__async_values[{}][1];", this.index);
                     let value = ctx.eval(js.as_str());
@@ -411,16 +412,13 @@ impl Future for AsyncJavascriptFutureNoValue {
                     wakers.insert(idx, task_ctx.waker().clone());
                 }
                 
-                /*let js_exec = format!("(async function (complete, error) {{
+                let js_exec = format!("(async function (complete, error) {{
                     try {{
                         {}
                     }} catch (e) {{
                         error(e);  
                     }}
-                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);*/
-                let js_exec = format!("this.__async_values[{}] = [false, (async function() {{
-                    {}
-                }})()];", idx, this.code);
+                }})(__async_callback({}, false), __async_callback({}, true));", this.code, idx, idx);
                 ctx.eval(js_exec.as_str())
             })?;
             std::task::Poll::Pending
