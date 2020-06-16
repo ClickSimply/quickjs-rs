@@ -204,7 +204,7 @@ impl JsAsync {
 
         let ctx: &Context = unsafe { context.as_ref().unwrap() };
 
-        let has_async_values = ctx.eval_as::<bool>("__async_values !== undefined;")?;
+        let has_async_values = ctx.eval_as::<bool>("typeof __async_values !== 'undefined';")?;
 
         if has_async_values == false {
 
