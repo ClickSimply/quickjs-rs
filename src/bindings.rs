@@ -868,6 +868,7 @@ unsafe extern "C" fn init(ctx: *mut q::JSContext, m: *mut q::JSModuleDef) -> i32
 }
 
 impl ContextWrapper {
+
     /// Initialize a wrapper by creating a JSRuntime and JSContext.
     pub fn new(memory_limit: Option<usize>) -> Result<Self, ContextError> {
         let runtime = unsafe { q::JS_NewRuntime() };
