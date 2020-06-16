@@ -204,7 +204,7 @@ impl JsAsync {
 
         let ctx: &Context = unsafe { context.as_ref().unwrap() };
 
-        let has_async_values = ctx.eval_as::<bool>("this.__async_values !== undefined;")?;
+        let has_async_values = ctx.eval_as::<bool>("__async_values !== undefined;")?;
 
         if has_async_values == false {
 
@@ -227,7 +227,7 @@ impl JsAsync {
             })?;
 
             ctx.eval("
-                this.__async_values = [];
+                __async_values = [];
                 const __async_callback = (idx, error) => {
                     return (result) => {
                         __async_values[idx] = [error, result];
@@ -315,17 +315,17 @@ X::Error: Into<ValueError> {
 
         if this.setup {
             let ctx: &Context = unsafe { this.context.as_ref().unwrap() };
-            let js = format!("this.__async_values[{}][0]", this.index);
+            let js = format!("__async_values[{}][0]", this.index);
             let is_error = ctx.eval_as::<bool>(js.as_str())?;
             if is_error {
-                let js = format!("this.__async_values[{}][1]", this.index);
+                let js = format!("__async_values[{}][1]", this.index);
                 let value = ctx.eval(js.as_str())?;
-                // ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                // ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(Err(ExecutionError::Exception(value)))
             } else {
-                let js = format!("this.__async_values[{}][1]", this.index);
+                let js = format!("__async_values[{}][1]", this.index);
                 let value = ctx.eval_as::<X>(js.as_str());
-                // ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                // ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(value)
             }
 
@@ -379,17 +379,17 @@ impl Future for AsyncJavascriptFutureNoValue {
 
         if this.setup {
             let ctx: &Context = unsafe { this.context.as_ref().unwrap() };
-            let js = format!("this.__async_values[{}][0];", this.index);
+            let js = format!("__async_values[{}][0];", this.index);
             let is_error = ctx.eval_as::<bool>(js.as_str())?;
             if is_error {
-                let js = format!("this.__async_values[{}][1];", this.index);
+                let js = format!("__async_values[{}][1];", this.index);
                 let value = ctx.eval(js.as_str())?;
-                ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(Err(ExecutionError::Exception(value)))
             } else {
-                let js = format!("this.__async_values[{}][1];", this.index);
+                let js = format!("__async_values[{}][1];", this.index);
                 let value = ctx.eval(js.as_str());
-                ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                ctx.eval(format!("delete __async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(value)
             }
             
