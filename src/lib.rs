@@ -320,12 +320,12 @@ X::Error: Into<ValueError> {
             if is_error {
                 let js = format!("this.__async_values[{}][1];", this.index);
                 let value = ctx.eval(js.as_str())?;
-                ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                // ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(Err(ExecutionError::Exception(value)))
             } else {
                 let js = format!("this.__async_values[{}][1];", this.index);
                 let value = ctx.eval_as::<X>(js.as_str());
-                ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
+                // ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(value)
             }
 
