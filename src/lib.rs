@@ -315,15 +315,15 @@ X::Error: Into<ValueError> {
 
         if this.setup {
             let ctx: &Context = unsafe { this.context.as_ref().unwrap() };
-            let js = format!("this.__async_values[{}][0];", this.index);
+            let js = format!("this.__async_values[{}][0]", this.index);
             let is_error = ctx.eval_as::<bool>(js.as_str())?;
             if is_error {
-                let js = format!("this.__async_values[{}][1];", this.index);
+                let js = format!("this.__async_values[{}][1]", this.index);
                 let value = ctx.eval(js.as_str())?;
                 // ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(Err(ExecutionError::Exception(value)))
             } else {
-                let js = format!("this.__async_values[{}][1];", this.index);
+                let js = format!("this.__async_values[{}][1]", this.index);
                 let value = ctx.eval_as::<X>(js.as_str());
                 // ctx.eval(format!("delete this.__async_values[{}][1];", this.index).as_str())?;
                 std::task::Poll::Ready(value)
